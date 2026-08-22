@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -7,7 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-void main() => runApp(const SainiApp());
+void main() {
+  runApp(const SainiApp());
+}
+
+// =====================================================
+// STORE
+// =====================================================
 
 class Store {
   static final Store instance = Store._();
@@ -21,33 +26,65 @@ class Store {
   int billNo = 1;
 
   Future<void> load() async {
-    final p = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-    products = _decode(p.getString('products'));
-    customers = _decode(p.getString('customers'));
-    bills = _decode(p.getString('bills'));
+    products = _decode(prefs.getString('products'));
+    customers = _decode(prefs.getString('customers'));
+    bills = _decode(prefs.getString('bills'));
 
-    billNo = p.getInt('billNo') ?? 1;
+    billNo = prefs.getInt('billNo') ?? 1;
   }
 
-  List<Map<String, dynamic>> _decode(String? s) {
-    if (s == null) return [];
+  List<Map<String, dynamic>> _decode(String? value) {
+    if (value == null || value.isEmpty) {
+      return [];
+    }
 
-    return List<Map<String, dynamic>>.from(
-      (jsonDecode(s) as List)
-          .map((e) => Map<String, dynamic>.from(e)),
-    );
+    try {
+      final decoded = jsonDecode(value);
+
+      if (decoded is! List) {
+        return [];
+      }
+
+      return decoded
+          .map<Map<String, dynamic>>(
+            (e) => Map<String, dynamic>.from(e as Map),
+          )
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<void> save() async {
-    final p = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-    await p.setString('products', jsonEncode(products));
-    await p.setString('customers', jsonEncode(customers));
-    await p.setString('bills', jsonEncode(bills));
-    await p.setInt('billNo', billNo);
+    await prefs.setString(
+      'products',
+      jsonEncode(products),
+    );
+
+    await prefs.setString(
+      'customers',
+      jsonEncode(customers),
+    );
+
+    await prefs.setString(
+      'bills',
+      jsonEncode(bills),
+    );
+
+    await prefs.setInt(
+      'billNo',
+      billNo,
+    );
   }
 }
+
+// =====================================================
+// APP
+// =====================================================
 
 class SainiApp extends StatelessWidget {
   const SainiApp({super.key});
@@ -66,6 +103,10 @@ class SainiApp extends StatelessWidget {
   }
 }
 
+// =====================================================
+// HOME
+// =====================================================
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -76,7 +117,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int index = 0;
 
-  final pages = const [
+  final List<Widget> pages = const [
     Dashboard(),
     ProductsPage(),
     CustomersPage(),
@@ -98,7 +139,9 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Saini Info Solutions'),
+        title: const Text(
+          'Saini Info Solutions',
+        ),
       ),
 
       body: pages[index],
@@ -119,8 +162,10 @@ class _HomePageState extends State<HomePage> {
 
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) {
-          setState(() => index = i);
+        onDestinationSelected: (value) {
+          setState(() {
+            index = value;
+          });
         },
         destinations: const [
           NavigationDestination(
@@ -144,67 +189,101 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _addProduct() async {
-    final name = TextEditingController();
-    final qty = TextEditingController();
-    final price = TextEditingController();
-    final low = TextEditingController(text: '2');
+  // ===================================================
+  // ADD PRODUCT
+  // ===================================================
 
-    final ok = await showDialog<bool>(
+  Future<void> _addProduct() async {
+    final nameController = TextEditingController();
+    final qtyController = TextEditingController();
+    final priceController = TextEditingController();
+    final lowController = TextEditingController(text: '2');
+
+    final result = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add Product'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: name,
-              decoration: const InputDecoration(
-                labelText: 'Product name',
-              ),
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Add Product'),
+
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Product name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                TextField(
+                  controller: qtyController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Opening stock',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                TextField(
+                  controller: priceController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Sale price',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                TextField(
+                  controller: lowController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Low stock limit',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ),
-            TextField(
-              controller: qty,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Opening stock',
-              ),
+          ),
+
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancel'),
             ),
-            TextField(
-              controller: price,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Sale price',
-              ),
-            ),
-            TextField(
-              controller: low,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Low stock limit',
-              ),
+
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Save'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
-    if (ok == true && name.text.trim().isNotEmpty) {
+    if (result == true &&
+        nameController.text.trim().isNotEmpty) {
       Store.instance.products.add({
-        'name': name.text.trim(),
-        'qty': int.tryParse(qty.text) ?? 0,
-        'price': double.tryParse(price.text) ?? 0,
-        'low': int.tryParse(low.text) ?? 2,
+        'name': nameController.text.trim(),
+        'qty': int.tryParse(qtyController.text.trim()) ?? 0,
+        'price': double.tryParse(
+              priceController.text.trim(),
+            ) ??
+            0.0,
+        'low': int.tryParse(lowController.text.trim()) ?? 2,
       });
 
       await Store.instance.save();
@@ -213,51 +292,75 @@ class _HomePageState extends State<HomePage> {
         setState(() {});
       }
     }
+
+    nameController.dispose();
+    qtyController.dispose();
+    priceController.dispose();
+    lowController.dispose();
   }
 
-  Future<void> _addCustomer() async {
-    final name = TextEditingController();
-    final phone = TextEditingController();
+  // ===================================================
+  // ADD CUSTOMER
+  // ===================================================
 
-    final ok = await showDialog<bool>(
+  Future<void> _addCustomer() async {
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
+
+    final result = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add Customer'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: name,
-              decoration: const InputDecoration(
-                labelText: 'Customer / Party name',
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Add Customer'),
+
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Customer / Party name',
+                  border: OutlineInputBorder(),
+                ),
               ),
+
+              const SizedBox(height: 10),
+
+              TextField(
+                controller: phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Mobile number',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancel'),
             ),
-            TextField(
-              controller: phone,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Mobile number',
-              ),
+
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Save'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
-    if (ok == true && name.text.trim().isNotEmpty) {
+    if (result == true &&
+        nameController.text.trim().isNotEmpty) {
       Store.instance.customers.add({
-        'name': name.text.trim(),
-        'phone': phone.text.trim(),
+        'name': nameController.text.trim(),
+        'phone': phoneController.text.trim(),
         'balance': 0.0,
       });
 
@@ -267,86 +370,111 @@ class _HomePageState extends State<HomePage> {
         setState(() {});
       }
     }
+
+    nameController.dispose();
+    phoneController.dispose();
   }
 }
+
+// =====================================================
+// DASHBOARD
+// =====================================================
 
 class Dashboard extends StatelessWidget {
   const Dashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final s = Store.instance;
+    final store = Store.instance;
 
-    final low = s.products
-        .where(
-          (p) =>
-              (p['qty'] ?? 0) <= (p['low'] ?? 2) &&
-              (p['qty'] ?? 0) > 0,
-        )
-        .length;
+    final lowStock = store.products.where((product) {
+      final qty = _toInt(product['qty']);
+      final low = _toInt(product['low']);
 
-    final nil = s.products
-        .where((p) => (p['qty'] ?? 0) <= 0)
-        .length;
+      return qty > 0 && qty <= low;
+    }).length;
+
+    final nilStock = store.products.where((product) {
+      return _toInt(product['qty']) <= 0;
+    }).length;
 
     final today =
         DateFormat('dd-MM-yyyy').format(DateTime.now());
 
-    final sales = s.bills.where((b) => b['date'] == today).fold<double>(
-      0,
-      (x, b) => x + ((b['total'] ?? 0) as num).toDouble(),
-    );
+    double todaySales = 0;
+
+    for (final bill in store.bills) {
+      if (bill['date'] == today) {
+        todaySales += _toDouble(bill['total']);
+      }
+    }
 
     return RefreshIndicator(
-      onRefresh: () => s.save(),
+      onRefresh: () async {
+        await store.load();
+
+        if (context.mounted) {
+          // Dashboard refresh handled by parent on next rebuild.
+        }
+      },
+
       child: ListView(
         padding: const EdgeInsets.all(16),
+
         children: [
           Text(
             'Welcome to Saini Info Solutions',
-            style: Theme.of(context).textTheme.headlineSmall,
+            style: Theme.of(context)
+                .textTheme
+                .headlineSmall,
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
           Wrap(
             spacing: 12,
             runSpacing: 12,
+
             children: [
-              _card(
+              _dashboardCard(
                 context,
                 'Products',
-                s.products.length,
+                store.products.length.toString(),
                 Icons.inventory_2,
               ),
-              _card(
+
+              _dashboardCard(
                 context,
                 'Low Stock',
-                low,
+                lowStock.toString(),
                 Icons.warning,
               ),
-              _card(
+
+              _dashboardCard(
                 context,
                 'Nil Stock',
-                nil,
+                nilStock.toString(),
                 Icons.remove_shopping_cart,
               ),
-              _card(
+
+              _dashboardCard(
                 context,
                 'Customers',
-                s.customers.length,
+                store.customers.length.toString(),
                 Icons.people,
               ),
-              _card(
+
+              _dashboardCard(
                 context,
                 "Today's Sales",
-                sales,
+                '₹${todaySales.toStringAsFixed(2)}',
                 Icons.currency_rupee,
               ),
-              _card(
+
+              _dashboardCard(
                 context,
                 'Bills',
-                s.bills.length,
+                store.bills.length.toString(),
                 Icons.receipt_long,
               ),
             ],
@@ -356,26 +484,38 @@ class Dashboard extends StatelessWidget {
     );
   }
 
-  Widget _card(
-    BuildContext c,
+  Widget _dashboardCard(
+    BuildContext context,
     String title,
-    dynamic value,
+    String value,
     IconData icon,
   ) {
     return SizedBox(
       width: 160,
-      height: 120,
+      height: 125,
+
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(14),
+
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+
             children: [
               Icon(icon),
+
+              const SizedBox(height: 6),
+
               Text(title),
+
+              const SizedBox(height: 4),
+
               Text(
-                '$value',
-                style: Theme.of(c).textTheme.titleLarge,
+                value,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge,
               ),
             ],
           ),
@@ -385,38 +525,75 @@ class Dashboard extends StatelessWidget {
   }
 }
 
+// =====================================================
+// PRODUCTS
+// =====================================================
+
 class ProductsPage extends StatefulWidget {
   const ProductsPage({super.key});
 
   @override
-  State<ProductsPage> createState() => _ProductsPageState();
+  State<ProductsPage> createState() =>
+      _ProductsPageState();
 }
 
 class _ProductsPageState extends State<ProductsPage> {
   @override
   Widget build(BuildContext context) {
+    final products = Store.instance.products;
+
+    if (products.isEmpty) {
+      return const Center(
+        child: Text(
+          'No products added yet',
+        ),
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.all(8),
-      itemCount: Store.instance.products.length,
-      itemBuilder: (c, i) {
-        final p = Store.instance.products[i];
-        final q = p['qty'] ?? 0;
+      itemCount: products.length,
+
+      itemBuilder: (context, index) {
+        final product = products[index];
+
+        final name =
+            product['name']?.toString() ?? '';
+
+        final qty =
+            _toInt(product['qty']);
+
+        final price =
+            _toDouble(product['price']);
+
+        final low =
+            _toInt(product['low']);
+
+        String status;
+
+        if (qty <= 0) {
+          status = 'NIL';
+        } else if (qty <= low) {
+          status = 'LOW';
+        } else {
+          status = 'OK';
+        }
 
         return Card(
           child: ListTile(
-            leading: const Icon(Icons.inventory_2),
-            title: Text(p['name']),
-            subtitle: Text(
-              'Sale: ₹${p['price']}  |  Stock: $q',
+            leading: const Icon(
+              Icons.inventory_2,
             ),
+
+            title: Text(name),
+
+            subtitle: Text(
+              'Sale: ₹${price.toStringAsFixed(2)}'
+              '  |  Stock: $qty',
+            ),
+
             trailing: Chip(
-              label: Text(
-                q <= 0
-                    ? 'NIL'
-                    : q <= (p['low'] ?? 2)
-                        ? 'LOW'
-                        : 'OK',
-              ),
+              label: Text(status),
             ),
           ),
         );
@@ -424,29 +601,63 @@ class _ProductsPageState extends State<ProductsPage> {
     );
   }
 }
+
+// =====================================================
+// CUSTOMERS
+// =====================================================
 
 class CustomersPage extends StatefulWidget {
   const CustomersPage({super.key});
 
   @override
-  State<CustomersPage> createState() => _CustomersPageState();
+  State<CustomersPage> createState() =>
+      _CustomersPageState();
 }
 
-class _CustomersPageState extends State<CustomersPage> {
+class _CustomersPageState
+    extends State<CustomersPage> {
   @override
   Widget build(BuildContext context) {
+    final customers =
+        Store.instance.customers;
+
+    if (customers.isEmpty) {
+      return const Center(
+        child: Text(
+          'No customers added yet',
+        ),
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.all(8),
-      itemCount: Store.instance.customers.length,
-      itemBuilder: (c, i) {
-        final x = Store.instance.customers[i];
+      itemCount: customers.length,
+
+      itemBuilder: (context, index) {
+        final customer = customers[index];
+
+        final name =
+            customer['name']?.toString() ?? '';
+
+        final phone =
+            customer['phone']?.toString() ?? '';
+
+        final balance =
+            _toDouble(customer['balance']);
 
         return Card(
           child: ListTile(
-            leading: const Icon(Icons.person),
-            title: Text(x['name']),
-            subtitle: Text(x['phone'] ?? ''),
-            trailing: Text('₹${x['balance'] ?? 0}'),
+            leading: const Icon(
+              Icons.person,
+            ),
+
+            title: Text(name),
+
+            subtitle: Text(phone),
+
+            trailing: Text(
+              '₹${balance.toStringAsFixed(2)}',
+            ),
           ),
         );
       },
@@ -454,256 +665,36 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 }
 
+// =====================================================
+// BILLS
+// =====================================================
+
 class BillsPage extends StatefulWidget {
   const BillsPage({super.key});
 
   @override
-  State<BillsPage> createState() => _BillsPageState();
+  State<BillsPage> createState() =>
+      _BillsPageState();
 }
 
-class _BillsPageState extends State<BillsPage> {
+class _BillsPageState
+    extends State<BillsPage> {
+
   @override
   Widget build(BuildContext context) {
+    final bills =
+        Store.instance.bills.reversed.toList();
+
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
-          child: FilledButton.icon(
-            onPressed: _newBill,
-            icon: const Icon(Icons.add),
-            label: const Text('New Sale Bill'),
-          ),
-        ),
 
-        Expanded(
-          child: ListView.builder(
-            itemCount: Store.instance.bills.length,
-            itemBuilder: (c, i) {
-              final b =
-                  Store.instance.bills.reversed.toList()[i];
+          child: SizedBox(
+            width: double.infinity,
 
-              return ListTile(
-                leading: const Icon(Icons.receipt),
-                title: Text(
-                  'Bill #${b['no']} - ${b['customer']}',
-                ),
-                subtitle: Text(b['date']),
-                trailing: Text('₹${b['total']}'),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
+            child: FilledButton.icon(
+              onPressed: _newBill,
 
-  Future<void> _newBill() async {
-    final s = Store.instance;
-
-    if (s.products.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('पहले product add करें'),
-        ),
-      );
-      return;
-    }
-
-    String customer = 'Cash Sale';
-
-    // FIX:
-    // पहले यहां Set<Map<String,dynamic>> बन रहा था।
-    // अब इसकी जरूरत ही नहीं है, इसलिए इसे हटा दिया गया है।
-
-    final selected = <String>{};
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: Text('New Bill #${s.billNo}'),
-
-          content: SizedBox(
-            width: 360,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: customer,
-                  items: [
-                    'Cash Sale',
-                    ...s.customers.map(
-                      (e) => e['name'] as String,
-                    ),
-                  ]
-                      .map(
-                        (x) => DropdownMenuItem<String>(
-                          value: x,
-                          child: Text(x),
-                        ),
-                      )
-                      .toList(),
-
-                  onChanged: (v) {
-                    if (v != null) {
-                      setD(() {
-                        customer = v;
-                      });
-                    }
-                  },
-
-                  decoration: const InputDecoration(
-                    labelText: 'Customer',
-                  ),
-                ),
-
-                ...s.products.map(
-                  (p) => CheckboxListTile(
-                    value: selected.contains(p['name']),
-
-                    onChanged: (v) {
-                      setD(() {
-                        if (v == true) {
-                          selected.add(p['name']);
-                        } else {
-                          selected.remove(p['name']);
-                        }
-                      });
-                    },
-
-                    title: Text(p['name']),
-                    subtitle: Text(
-                      '₹${p['price']} | stock ${p['qty']}',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
-              child: const Text('Save Bill'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (ok == true && selected.isNotEmpty) {
-      double total = 0;
-
-      final List<Map<String, dynamic>> billItems = [];
-
-      for (final name in selected) {
-        final p = s.products.firstWhere(
-          (x) => x['name'] == name,
-        );
-
-        final q = p['qty'] ?? 0;
-
-        if (q > 0) {
-          p['qty'] = q - 1;
-
-          total += (p['price'] ?? 0).toDouble();
-
-          billItems.add({
-            'name': name,
-            'price': p['price'],
-            'qty': 1,
-          });
-        }
-      }
-
-      final date =
-          DateFormat('dd-MM-yyyy').format(DateTime.now());
-
-      s.bills.add({
-        'no': s.billNo++,
-        'date': date,
-        'customer': customer,
-        'total': total,
-        'items': billItems,
-      });
-
-      await s.save();
-
-      if (mounted) {
-        setState(() {});
-      }
-
-      await _printBill(s.bills.last);
-    }
-  }
-
-  Future<void> _printBill(
-    Map<String, dynamic> b,
-  ) async {
-    final doc = pw.Document();
-
-    doc.addPage(
-      pw.Page(
-        build: (ctx) => pw.Column(
-          crossAxisAlignment:
-              pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text(
-              'SAINI INFO SOLUTIONS',
-              style: pw.TextStyle(
-                fontSize: 20,
-                fontWeight: pw.FontWeight.bold,
-              ),
-            ),
-
-            pw.Text(
-              'Bill No: ${b['no']}    Date: ${b['date']}',
-            ),
-
-            pw.Text(
-              'Customer: ${b['customer']}',
-            ),
-
-            pw.SizedBox(height: 15),
-
-            ...(b['items'] as List).map(
-              (x) => pw.Row(
-                mainAxisAlignment:
-                    pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    '${x['name']} x${x['qty']}',
-                  ),
-                  pw.Text(
-                    '₹${x['price']}',
-                  ),
-                ],
-              ),
-            ),
-
-            pw.Divider(),
-
-            pw.Text(
-              'TOTAL: ₹${b['total']}',
-              style: pw.TextStyle(
-                fontSize: 16,
-                fontWeight: pw.FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    await Printing.layoutPdf(
-      onLayout: (format) => doc.save(),
-    );
-  }
-}
+              icon: const Icon(
+               
