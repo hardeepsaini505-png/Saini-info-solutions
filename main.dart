@@ -247,4 +247,7 @@ class _HomePageState extends State<HomePage> {
                   controller: lowController,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
+  labelText: 'Low stock limit',
+  border: OutlineInputBorder(),
+),
                    
