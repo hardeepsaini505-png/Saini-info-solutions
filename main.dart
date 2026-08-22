@@ -250,4 +250,5 @@ class _HomePageState extends State<HomePage> {
   labelText: 'Low stock limit',
   border: OutlineInputBorder(),
 ),
+                  ),
                    
