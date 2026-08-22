@@ -227,8 +227,8 @@ class _HomePageState extends State<HomePage> {
                     border: OutlineInputBorder(),
                   ),
                 ),
-              ),
-                        const SizedBox(height: 12),
+  
+         const SizedBox(height: 12),
 
             TextField(
               controller: lowController,
