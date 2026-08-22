@@ -1,22 +1,18 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 void main() {
   runApp(const SainiApp());
 }
 
 // =====================================================
-// STORE
+// STORE / LOCAL DATABASE
 // =====================================================
 
 class Store {
   static final Store instance = Store._();
-
   Store._();
 
   List<Map<String, dynamic>> products = [];
@@ -31,26 +27,19 @@ class Store {
     products = _decode(prefs.getString('products'));
     customers = _decode(prefs.getString('customers'));
     bills = _decode(prefs.getString('bills'));
-
     billNo = prefs.getInt('billNo') ?? 1;
   }
 
-  List<Map<String, dynamic>> _decode(String? value) {
-    if (value == null || value.isEmpty) {
-      return [];
-    }
+  List<Map<String, dynamic>> _decode(String? data) {
+    if (data == null || data.isEmpty) return [];
 
     try {
-      final decoded = jsonDecode(value);
+      final value = jsonDecode(data);
+      if (value is! List) return [];
 
-      if (decoded is! List) {
-        return [];
-      }
-
-      return decoded
-          .map<Map<String, dynamic>>(
-            (e) => Map<String, dynamic>.from(e as Map),
-          )
+      return value
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
           .toList();
     } catch (_) {
       return [];
@@ -60,25 +49,10 @@ class Store {
   Future<void> save() async {
     final prefs = await SharedPreferences.getInstance();
 
-    await prefs.setString(
-      'products',
-      jsonEncode(products),
-    );
-
-    await prefs.setString(
-      'customers',
-      jsonEncode(customers),
-    );
-
-    await prefs.setString(
-      'bills',
-      jsonEncode(bills),
-    );
-
-    await prefs.setInt(
-      'billNo',
-      billNo,
-    );
+    await prefs.setString('products', jsonEncode(products));
+    await prefs.setString('customers', jsonEncode(customers));
+    await prefs.setString('bills', jsonEncode(bills));
+    await prefs.setInt('billNo', billNo);
   }
 }
 
@@ -97,6 +71,9 @@ class SainiApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.indigo,
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
+        ),
       ),
       home: const HomePage(),
     );
@@ -116,36 +93,48 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int index = 0;
-
-  final List<Widget> pages = const [
-    Dashboard(),
-    ProductsPage(),
-    CustomersPage(),
-    BillsPage(),
-  ];
+  bool loading = true;
 
   @override
   void initState() {
     super.initState();
+    _loadStore();
+  }
 
-    Store.instance.load().then((_) {
-      if (mounted) {
-        setState(() {});
-      }
+  Future<void> _loadStore() async {
+    await Store.instance.load();
+
+    if (!mounted) return;
+
+    setState(() {
+      loading = false;
     });
+  }
+
+  void refresh() {
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final pages = [
+      Dashboard(onRefresh: refresh),
+      ProductsPage(onRefresh: refresh),
+      CustomersPage(onRefresh: refresh),
+      BillsPage(onRefresh: refresh),
+    ];
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Saini Info Solutions',
-        ),
+        title: const Text('Saini Info Solutions'),
       ),
-
       body: pages[index],
-
       floatingActionButton: index == 1
           ? FloatingActionButton.extended(
               onPressed: _addProduct,
@@ -158,14 +147,17 @@ class _HomePageState extends State<HomePage> {
                   icon: const Icon(Icons.person_add),
                   label: const Text('Customer'),
                 )
-              : null,
-
+              : index == 3
+                  ? FloatingActionButton.extended(
+                      onPressed: _addBill,
+                      icon: const Icon(Icons.receipt_long),
+                      label: const Text('Bill'),
+                    )
+                  : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (value) {
-          setState(() {
-            index = value;
-          });
+          setState(() => index = value);
         },
         destinations: const [
           NavigationDestination(
@@ -204,7 +196,6 @@ class _HomePageState extends State<HomePage> {
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Add Product'),
-
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -213,23 +204,25 @@ class _HomePageState extends State<HomePage> {
                   controller: nameController,
                   decoration: const InputDecoration(
                     labelText: 'Product name',
-                    border: OutlineInputBorder(),
                   ),
                 ),
-
-                const SizedBox(height: 10),
-
+                const SizedBox(height: 12),
                 TextField(
                   controller: qtyController,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
                     labelText: 'Opening stock',
-                    border: OutlineInputBorder(),
                   ),
                 ),
-
-                const SizedBox(height: 10),
-
+                const SizedBox(height: 12),
+                TextField(
+                  controller: lowController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Low stock limit',
+                  ),
+                ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: priceController,
                   keyboardType: const TextInputType.numberWithOptions(
@@ -237,60 +230,43 @@ class _HomePageState extends State<HomePage> {
                   ),
                   decoration: const InputDecoration(
                     labelText: 'Sale price',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                TextField(
-                  controller: lowController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Low stock limit',
-                    border: OutlineInputBorder(),
                   ),
                 ),
               ],
             ),
           ),
-
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, false);
-              },
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
-
-            FilledButton(
+            ElevatedButton(
               onPressed: () {
+                if (nameController.text.trim().isEmpty) return;
                 Navigator.pop(dialogContext, true);
               },
-              child: const Text('Save'),
+              child: const Text('Add'),
             ),
           ],
         );
       },
     );
 
-    if (result == true &&
-        nameController.text.trim().isNotEmpty) {
+    if (result == true) {
+      final name = nameController.text.trim();
+      final qty = int.tryParse(qtyController.text.trim()) ?? 0;
+      final price = double.tryParse(priceController.text.trim()) ?? 0;
+      final low = int.tryParse(lowController.text.trim()) ?? 2;
+
       Store.instance.products.add({
-        'name': nameController.text.trim(),
-        'qty': int.tryParse(qtyController.text.trim()) ?? 0,
-        'price': double.tryParse(
-              priceController.text.trim(),
-            ) ??
-            0.0,
-        'low': int.tryParse(lowController.text.trim()) ?? 2,
+        'name': name,
+        'qty': qty,
+        'price': price,
+        'low': low,
       });
 
       await Store.instance.save();
-
-      if (mounted) {
-        setState(() {});
-      }
+      refresh();
     }
 
     nameController.dispose();
@@ -312,52 +288,43 @@ class _HomePageState extends State<HomePage> {
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Add Customer'),
-
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameController,
                 decoration: const InputDecoration(
-                  labelText: 'Customer / Party name',
-                  border: OutlineInputBorder(),
+                  labelText: 'Customer name',
                 ),
               ),
-
-              const SizedBox(height: 10),
-
+              const SizedBox(height: 12),
               TextField(
                 controller: phoneController,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(
                   labelText: 'Mobile number',
-                  border: OutlineInputBorder(),
                 ),
               ),
             ],
           ),
-
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, false);
-              },
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
-
-            FilledButton(
+            ElevatedButton(
               onPressed: () {
+                if (nameController.text.trim().isEmpty) return;
                 Navigator.pop(dialogContext, true);
               },
-              child: const Text('Save'),
+              child: const Text('Add'),
             ),
           ],
         );
       },
     );
 
-    if (result == true &&
-        nameController.text.trim().isNotEmpty) {
+    if (result == true) {
       Store.instance.customers.add({
         'name': nameController.text.trim(),
         'phone': phoneController.text.trim(),
@@ -365,14 +332,179 @@ class _HomePageState extends State<HomePage> {
       });
 
       await Store.instance.save();
-
-      if (mounted) {
-        setState(() {});
-      }
+      refresh();
     }
 
     nameController.dispose();
     phoneController.dispose();
+  }
+
+  // ===================================================
+  // ADD BILL
+  // ===================================================
+
+  Future<void> _addBill() async {
+    if (Store.instance.products.isEmpty) {
+      await _showMessage('Add a product first.');
+      return;
+    }
+
+    if (Store.instance.customers.isEmpty) {
+      await _showMessage('Add a customer first.');
+      return;
+    }
+
+    String? selectedProduct;
+    String? selectedCustomer;
+    final qtyController = TextEditingController(text: '1');
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Create Sale Bill'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedProduct,
+                      decoration: const InputDecoration(
+                        labelText: 'Product',
+                      ),
+                      items: Store.instance.products.map((product) {
+                        final name = product['name'].toString();
+                        final stock = _toInt(product['qty']);
+                        return DropdownMenuItem<String>(
+                          value: name,
+                          child: Text('$name (Stock: $stock)'),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() => selectedProduct = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedCustomer,
+                      decoration: const InputDecoration(
+                        labelText: 'Customer',
+                      ),
+                      items: Store.instance.customers.map((customer) {
+                        final name = customer['name'].toString();
+                        return DropdownMenuItem<String>(
+                          value: name,
+                          child: Text(name),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() => selectedCustomer = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: qtyController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Quantity',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (selectedProduct == null ||
+                        selectedCustomer == null) {
+                      return;
+                    }
+                    Navigator.pop(dialogContext, true);
+                  },
+                  child: const Text('Create'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == true) {
+      final qty = int.tryParse(qtyController.text.trim()) ?? 0;
+
+      if (qty <= 0 || selectedProduct == null || selectedCustomer == null) {
+        await _showMessage('Enter a valid quantity.');
+      } else {
+        final productIndex = Store.instance.products.indexWhere(
+          (p) => p['name'].toString() == selectedProduct,
+        );
+
+        if (productIndex < 0) {
+          await _showMessage('Product not found.');
+        } else {
+          final product = Store.instance.products[productIndex];
+          final stock = _toInt(product['qty']);
+
+          if (qty > stock) {
+            await _showMessage('Not enough stock. Available: $stock');
+          } else {
+            final price = _toDouble(product['price']);
+            final total = price * qty;
+
+            product['qty'] = stock - qty;
+
+            final customerIndex = Store.instance.customers.indexWhere(
+              (c) => c['name'].toString() == selectedCustomer,
+            );
+
+            if (customerIndex >= 0) {
+              final customer = Store.instance.customers[customerIndex];
+              customer['balance'] =
+                  _toDouble(customer['balance']) + total;
+            }
+
+            Store.instance.bills.add({
+              'billNo': Store.instance.billNo,
+              'date': DateTime.now().toIso8601String(),
+              'product': selectedProduct,
+              'customer': selectedCustomer,
+              'qty': qty,
+              'price': price,
+              'total': total,
+            });
+
+            Store.instance.billNo++;
+            await Store.instance.save();
+            refresh();
+          }
+        }
+      }
+    }
+
+    qtyController.dispose();
+  }
+
+  Future<void> _showMessage(String message) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Saini Info Solutions'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -381,143 +513,97 @@ class _HomePageState extends State<HomePage> {
 // =====================================================
 
 class Dashboard extends StatelessWidget {
-  const Dashboard({super.key});
+  final VoidCallback onRefresh;
+
+  const Dashboard({
+    super.key,
+    required this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final store = Store.instance;
+    final products = Store.instance.products;
+    final customers = Store.instance.customers;
+    final bills = Store.instance.bills;
 
-    final lowStock = store.products.where((product) {
-      final qty = _toInt(product['qty']);
-      final low = _toInt(product['low']);
-
-      return qty > 0 && qty <= low;
+    final lowStock = products.where((p) {
+      return _toInt(p['qty']) <= _toInt(p['low'], 2);
     }).length;
 
-    final nilStock = store.products.where((product) {
-      return _toInt(product['qty']) <= 0;
-    }).length;
-
-    final today =
-        DateFormat('dd-MM-yyyy').format(DateTime.now());
-
-    double todaySales = 0;
-
-    for (final bill in store.bills) {
-      if (bill['date'] == today) {
-        todaySales += _toDouble(bill['total']);
-      }
-    }
+    final totalSales = bills.fold<double>(
+      0,
+      (sum, bill) => sum + _toDouble(bill['total']),
+    );
 
     return RefreshIndicator(
       onRefresh: () async {
-        await store.load();
-
-        if (context.mounted) {
-          // Dashboard refresh handled by parent on next rebuild.
-        }
+        await Store.instance.load();
+        onRefresh();
       },
-
       child: ListView(
         padding: const EdgeInsets.all(16),
-
         children: [
-          Text(
-            'Welcome to Saini Info Solutions',
-            style: Theme.of(context)
-                .textTheme
-                .headlineSmall,
+          const Text(
+            'Dashboard',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-
-          const SizedBox(height: 20),
-
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-
-            children: [
-              _dashboardCard(
-                context,
-                'Products',
-                store.products.length.toString(),
-                Icons.inventory_2,
-              ),
-
-              _dashboardCard(
-                context,
-                'Low Stock',
-                lowStock.toString(),
-                Icons.warning,
-              ),
-
-              _dashboardCard(
-                context,
-                'Nil Stock',
-                nilStock.toString(),
-                Icons.remove_shopping_cart,
-              ),
-
-              _dashboardCard(
-                context,
-                'Customers',
-                store.customers.length.toString(),
-                Icons.people,
-              ),
-
-              _dashboardCard(
-                context,
-                "Today's Sales",
-                '₹${todaySales.toStringAsFixed(2)}',
-                Icons.currency_rupee,
-              ),
-
-              _dashboardCard(
-                context,
-                'Bills',
-                store.bills.length.toString(),
-                Icons.receipt_long,
-              ),
-            ],
+          const SizedBox(height: 16),
+          _DashboardCard(
+            title: 'Total Products',
+            value: products.length.toString(),
+            icon: Icons.inventory_2,
+          ),
+          _DashboardCard(
+            title: 'Low / Nil Stock',
+            value: lowStock.toString(),
+            icon: Icons.warning_amber,
+          ),
+          _DashboardCard(
+            title: 'Customers',
+            value: customers.length.toString(),
+            icon: Icons.people,
+          ),
+          _DashboardCard(
+            title: 'Total Sales',
+            value: '₹${totalSales.toStringAsFixed(2)}',
+            icon: Icons.currency_rupee,
+          ),
+          _DashboardCard(
+            title: 'Bills',
+            value: bills.length.toString(),
+            icon: Icons.receipt_long,
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _dashboardCard(
-    BuildContext context,
-    String title,
-    String value,
-    IconData icon,
-  ) {
-    return SizedBox(
-      width: 160,
-      height: 125,
+class _DashboardCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final IconData icon;
 
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
+  const _DashboardCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
 
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-
-            children: [
-              Icon(icon),
-
-              const SizedBox(height: 6),
-
-              Text(title),
-
-              const SizedBox(height: 4),
-
-              Text(
-                value,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge,
-              ),
-            ],
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(child: Icon(icon)),
+        title: Text(title),
+        trailing: Text(
+          value,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
@@ -529,72 +615,54 @@ class Dashboard extends StatelessWidget {
 // PRODUCTS
 // =====================================================
 
-class ProductsPage extends StatefulWidget {
-  const ProductsPage({super.key});
+class ProductsPage extends StatelessWidget {
+  final VoidCallback onRefresh;
 
-  @override
-  State<ProductsPage> createState() =>
-      _ProductsPageState();
-}
+  const ProductsPage({
+    super.key,
+    required this.onRefresh,
+  });
 
-class _ProductsPageState extends State<ProductsPage> {
   @override
   Widget build(BuildContext context) {
     final products = Store.instance.products;
 
     if (products.isEmpty) {
       return const Center(
-        child: Text(
-          'No products added yet',
-        ),
+        child: Text('No products added yet.'),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(12),
       itemCount: products.length,
-
       itemBuilder: (context, index) {
         final product = products[index];
-
-        final name =
-            product['name']?.toString() ?? '';
-
-        final qty =
-            _toInt(product['qty']);
-
-        final price =
-            _toDouble(product['price']);
-
-        final low =
-            _toInt(product['low']);
-
-        String status;
-
-        if (qty <= 0) {
-          status = 'NIL';
-        } else if (qty <= low) {
-          status = 'LOW';
-        } else {
-          status = 'OK';
-        }
+        final qty = _toInt(product['qty']);
+        final low = _toInt(product['low'], 2);
+        final isLow = qty <= low;
 
         return Card(
           child: ListTile(
-            leading: const Icon(
-              Icons.inventory_2,
+            leading: CircleAvatar(
+              child: Text(qty.toString()),
             ),
-
-            title: Text(name),
-
+            title: Text(product['name'].toString()),
             subtitle: Text(
-              'Sale: ₹${price.toStringAsFixed(2)}'
-              '  |  Stock: $qty',
+              'Sale price: ₹${_toDouble(product['price']).toStringAsFixed(2)}'
+              '\nLow limit: $low',
             ),
-
-            trailing: Chip(
-              label: Text(status),
-            ),
+            isThreeLine: true,
+            trailing: isLow
+                ? const Chip(
+                    label: Text('LOW'),
+                  )
+                : const Icon(Icons.check_circle_outline),
+            onLongPress: () async {
+              Store.instance.products.removeAt(index);
+              await Store.instance.save();
+              onRefresh();
+            },
           ),
         );
       },
@@ -606,58 +674,46 @@ class _ProductsPageState extends State<ProductsPage> {
 // CUSTOMERS
 // =====================================================
 
-class CustomersPage extends StatefulWidget {
-  const CustomersPage({super.key});
+class CustomersPage extends StatelessWidget {
+  final VoidCallback onRefresh;
 
-  @override
-  State<CustomersPage> createState() =>
-      _CustomersPageState();
-}
+  const CustomersPage({
+    super.key,
+    required this.onRefresh,
+  });
 
-class _CustomersPageState
-    extends State<CustomersPage> {
   @override
   Widget build(BuildContext context) {
-    final customers =
-        Store.instance.customers;
+    final customers = Store.instance.customers;
 
     if (customers.isEmpty) {
       return const Center(
-        child: Text(
-          'No customers added yet',
-        ),
+        child: Text('No customers added yet.'),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(12),
       itemCount: customers.length,
-
       itemBuilder: (context, index) {
         final customer = customers[index];
-
-        final name =
-            customer['name']?.toString() ?? '';
-
-        final phone =
-            customer['phone']?.toString() ?? '';
-
-        final balance =
-            _toDouble(customer['balance']);
+        final balance = _toDouble(customer['balance']);
 
         return Card(
           child: ListTile(
-            leading: const Icon(
-              Icons.person,
+            leading: const CircleAvatar(
+              child: Icon(Icons.person),
             ),
-
-            title: Text(name),
-
-            subtitle: Text(phone),
-
-            trailing: Text(
-              '₹${balance.toStringAsFixed(2)}',
+            title: Text(customer['name'].toString()),
+            subtitle: Text(
+              '${customer['phone']}\nBalance: ₹${balance.toStringAsFixed(2)}',
             ),
+            isThreeLine: true,
+            onLongPress: () async {
+              Store.instance.customers.removeAt(index);
+              await Store.instance.save();
+              onRefresh();
+            },
           ),
         );
       },
@@ -669,32 +725,77 @@ class _CustomersPageState
 // BILLS
 // =====================================================
 
-class BillsPage extends StatefulWidget {
-  const BillsPage({super.key});
+class BillsPage extends StatelessWidget {
+  final VoidCallback onRefresh;
 
-  @override
-  State<BillsPage> createState() =>
-      _BillsPageState();
-}
-
-class _BillsPageState
-    extends State<BillsPage> {
+  const BillsPage({
+    super.key,
+    required this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final bills =
-        Store.instance.bills.reversed.toList();
+    final bills = Store.instance.bills;
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
+    if (bills.isEmpty) {
+      return const Center(
+        child: Text('No bills created yet.'),
+      );
+    }
 
-          child: SizedBox(
-            width: double.infinity,
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: bills.length,
+      itemBuilder: (context, index) {
+        final bill = bills[index];
+        final date = DateTime.tryParse(
+          bill['date']?.toString() ?? '',
+        );
 
-            child: FilledButton.icon(
-              onPressed: _newBill,
+        return Card(
+          child: ListTile(
+            leading: CircleAvatar(
+              child: Text(
+                bill['billNo'].toString(),
+              ),
+            ),
+            title: Text(
+              'Bill #${bill['billNo']} - ${bill['customer']}',
+            ),
+            subtitle: Text(
+              '${bill['product']} × ${bill['qty']}'
+              '\n${date == null ? '' : _formatDate(date)}',
+            ),
+            isThreeLine: true,
+            trailing: Text(
+              '₹${_toDouble(bill['total']).toStringAsFixed(2)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
-              icon: const Icon(
-               
+// =====================================================
+// HELPERS
+// =====================================================
+
+int _toInt(dynamic value, [int fallback = 0]) {
+  if (value is int) return value;
+  return int.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+double _toDouble(dynamic value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+String _formatDate(DateTime date) {
+  final d = date.day.toString().padLeft(2, '0');
+  final m = date.month.toString().padLeft(2, '0');
+  return '$d-$m-${date.year}';
+}
