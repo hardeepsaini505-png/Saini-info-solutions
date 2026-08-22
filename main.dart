@@ -228,7 +228,16 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
-                const SizedBox(height: 12),
+                        const SizedBox(height: 12),
+
+            TextField(
+              controller: lowController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Low stock limit',
+                border: OutlineInputBorder(),
+              ),
+            ),
 
                 TextField(
                   controller: priceController,
@@ -241,14 +250,4 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),     
-                const SizedBox(height: 12),
-
-                TextField(
-                  controller: lowController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-  labelText: 'Low stock limit',
-  border: OutlineInputBorder(),
-),
-                  ),
-                                 
+                const SizedBox(height:
